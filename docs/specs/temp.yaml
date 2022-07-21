@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info:
+  title: Apidoc
+  version: '1.0'
+paths:
+  /my/test/path:
+    get:
+      operationId: test
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestSchema'
+components:
+  schemas:
+    TestSchema:
+      type: object
+      deprecated: true
+      properties:
+        prop1:
+          description: _First name_ (First name should be italics)
+          type: string
+          deprecated: true
+        targets_new:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        targets:
+          type: array
+          items:
+            type: string
+          readOnly: true
+          description: Deprecated in description also
+          deprecated: true
+        fullName:
+          description: Person's Full name
+          type: object
+          deprecated: true
+          properties:
+            firstName:
+              description: _First name_ (First name should be italics)
+              type: string
+              deprecated: true
+            lastName:
+              description: |
+                `Last name` (last name must be monospaced)
+              type: string
+  
+      required:
+      - targets_new
+      - targets

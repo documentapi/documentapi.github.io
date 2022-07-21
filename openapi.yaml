@@ -1,0 +1,1027 @@
+openapi: 3.0.0
+info:
+  title: API documentation
+  description: |
+    # Схема взаимодействия платформы Aeroclub c API поставщика
+    ## Определение маршрута трансфера клиентов и поиск вариантов
+    - Клиент на платформе Aeroclub определяет точки маршрута.
+    - Клиент запрашивает доступные варианты по классам машин.
+     - Отправляется запроса поиска доступных вариантов в систему поставщика [GET /prices](#get-/prices "GET /prices").
+     - Получаем результаты поиска и отображаем их клиенту в интерфейсе платформы Aeroclub.
+    - Клиент выбирает подходящий вариант и добавляет его в корзину, на данном этапе создаётся услуга, с которой клиент в дальнейшем и продолжит работу.
+    
+    ## Работа с услугой
+    - Водит данные по времени подачи машины, если конечная точка маршрута аэропорт или вокзал, то вводятся данные по времени вылета/отправления поезда.
+     - Для валидации возможности подачи машины к определенному времени отправляется запрос [POST /orders/check-time](#post-/orders/check-time "POST /orders/check-time"). Если валидация пройдена, то разрешаем клиенту продолжить работать с услугой на платформе Aeroclub.
+    - Клиент выбирает точку на маршруте для доп. заезда.
+     - При добавлении точки доп. заезда в систему поставщика отправляется запрос [GET /places/get-place-by-point](#get-/places/get-place-by-point "GET /places/get-place-by-point") в следствии чего в ответе мы должны получить place_id, который сравниваем с place_id начальной или конечной точкой машрута. Если id совпадают, то разрешаем добавить точку доп. заезда по машруту в услугу.
+    
+    ## Создание заказа на стороне поставщика
+    - Оправляем запрос на создание заказа в API поставщика [POST /orders](#post-/orders "POST /orders").
+    - Отправляем запрос на подверждение созданного заказа [POST /orders/approve/{transaction}](#post-/orders/approve/-transaction- "POST /orders/approve/{transaction}").
+    - Получаем детальную информацию по заказу на стороне поставщика отправляя запрос [GET /orders/trips](#get-/orders/trips "GET /orders/trips").
+    - На платформе Aeroclub для услуги обновляем статус услуги в соответствие со статусом заказа на стороне поставщика.
+    - Запрашивается получения ваучера. Отправляется запрос [GET /documents](#get-/documents "GET /documents"). Ваучер прикрепляется к услуге на платформе Aeroclub.
+    
+    ## Отмена заказа
+    - Клиент запросил отмену бронирования по услуге на платформе Aeroclub.
+     - Отправляется запрос отмены к поставщику [POST /orders/trips/cancel](#post-/orders/trips/cancel "POST /orders/trips/cancel").
+     - Отправляется запрос получения детальной информации по заказу [GET /orders/trips](#get-/orders/trips "GET /orders/trips").
+    - Устанавливается актуальный статус по услуге на платформе Aeroclub и открепляем ваучеры от услуги.
+    
+    ## Схема последовательности
+    [![](scheme/sequence_diagram_v1.png)](scheme/sequence_diagram_v1.png)
+  
+  version: 0.0.1
+tags:
+  - name: user
+    description: Users
+  - name: place
+    description: Places
+  - name: price
+    description: Prices
+  - name: order
+    description: Orders
+  - name: document
+    description: Documents
+components:
+  schemas:
+    user:
+      title: Идентификатор пользователя
+      type: string
+      example: aeroclub
+    password:
+      title: Пароль пользователя
+      type: string
+      format: password
+      example: HeGNGvoqquE92ay5ZgR6
+    lang:
+      title: Локализация ожидаемого ответа
+      description: |
+        Локализация ожидаемого ответа
+        `ru` - Русский
+        `en` - Английский
+      type: string
+      enum:
+        - ru
+        - en
+      example: ru
+      default: ru
+    point:
+      title: Координаты точки
+      type: string
+      example: 55.61183 37.715219
+    order_id:
+      title: Идентификатор заказа / поездки
+      type: integer
+      example: 1245789
+    status:
+      title: Статус обработки поездки
+      description: |
+        `0` - Ожидание обработки
+        `1` - Обработка
+        `2` - Принята
+        `3` - Выполнена
+        `4` - Отменена без штрафа
+        `5` - Отменена со штрафом
+        `6` - Не оплачена
+        `7` - Изменена
+      type: integer
+      enum:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+      example: 0
+    trip_object:
+      title: Поездка (модель для создания поездки)
+      type: object
+      properties:
+        price_id:
+          $ref: '#/components/schemas/price_id'
+        start_location:
+          $ref: '#/components/schemas/location_object'
+        finish_location:
+          $ref: '#/components/schemas/location_object'
+        additional_locations:
+          title: Список доп. адресов
+          type: array
+          items:
+            $ref: '#/components/schemas/additional_location_object'
+        passengers:
+          title: Список пассажиров
+          type: array
+          items:
+            title: Пассажир
+            type: object
+            properties:
+              name:
+                description: Имя пассажира
+                type: string
+                example: Рахманов Сергей
+              email:
+                description: Адрес электронной почты пассажира
+                type: string
+                example: test@gmail.com
+              phone:
+                description: Телефон пассажира
+                type: string
+                example: '79994567812'
+        customer:
+          title: Менеджер по бронированию
+          type: object
+          properties:
+            name:
+              description: Имя менеджера
+              type: string
+              example: Ковальчук Елена
+            email:
+              description: Адрес электронной почты менеджера
+              type: string
+              example: Kovalchuk.Elena@aeroclub.ru
+            phone:
+              description: Телефон менеджера
+              type: string
+              example: '74957441111'
+        text_tablet:
+          $ref: '#/components/schemas/text_tablet'
+        comment:
+          $ref: '#/components/schemas/comment'
+        additional_services:
+          title: ID доп. услуги (Например встреча с табличкой)
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: number
+          example:
+            - id: 2
+    trip_object2:
+      title: Поездка (модель при получении информации о созданной поездке)
+      type: object
+      properties:
+        order_id:
+          title: Идентификатор заказа / поездки
+          type: integer
+          example: 1245789
+        transaction:
+           $ref: '#/components/schemas/transaction'
+        date:
+          description: >-
+            Дата бронирования
+          type: string
+          format: date-time
+          example: 2022-07-20 14:34
+        date_arrival:
+          description: >-
+            Дата прибытия
+          type: string
+          format: date-time
+          example: 2022-08-14 12:00
+        date_departure:
+          description: >-
+            Дата отъезда
+          type: string
+          format: date-time
+          example: 2022-08-14 17:00
+        date_change:
+          description: >-
+            Время любого изменения данных поездки
+          type: string
+          format: date-time
+          example: 2022-07-21 15:46
+        status:
+          $ref: '#/components/schemas/status'
+        cancellation_time:
+          title: >-
+            Минимально возможное время для бесплатной отмены
+            поездки
+          type: integer
+          example: 2
+        cancellation_time_without_penalty:
+          description: >-
+            Крайняя дата и время бесплатной отмены
+          type: string
+          format: date-time
+          example: 2022-08-13 17:00
+        table:
+          title: Текст таблички
+          type: string
+          example: Сергей Рахманов
+        notes:
+          title: Примечание к поездке
+          type: string
+          example: Без музыки в поездке
+        passengers:
+          title: Список пассажиров
+          type: array
+          items:
+            title: Пассажир
+            type: object
+            properties:
+              name:
+                description: Имя пассажира
+                type: string
+                example: Сергей Рахманов
+              email:
+                description: Адрес электронной почты пассажира
+                type: string
+                example: rakhmanov@gmail.com
+              phone:
+                description: Телефон пассажира
+                type: string
+                example: '79994567812'
+        destination_address:
+          title: Конечная точка машрута
+          type: string
+          example: Домодедово
+        destination_address_object:
+          $ref: '#/components/schemas/address_object'
+        location_address:
+          title: Начальная точка машрута
+          type: string
+          example: Россия, Москва, 3-я Рыбинская улица, 18с22
+        location_address_object:
+          $ref: '#/components/schemas/address_object'
+        car_data:
+          $ref: '#/components/schemas/car_data_object'
+        price:
+          title: Стоимость поездки
+          type: number
+          example: 1564
+        allowable_subaddress:
+          title: Разрешенное количество дополнительных заездов
+          type: integer
+          example: 3
+        start_place:
+          $ref: '#/components/schemas/place_object2'
+        finish_place:
+          $ref: '#/components/schemas/place_object2'
+        additional_services:
+          $ref: '#/components/schemas/additional_services_object'
+    price_id:
+      title: Идентификатор предложения
+      type: integer
+      example: 4556783
+    location_object:
+      title: Объект локации
+      type: object
+      properties:
+        flight_number:
+          description: Номер авиарейса, если место начала поездки аэропорт
+          type: string
+          example: SU 6022
+        terminal_number:
+          description: >-
+            Номер терминала аэропорта, если место начала или окончания поездки
+            аэропорт
+          type: string
+          example: A
+        train_number:
+          description: Номер поезда, если место начала поездки ж/д вокзал
+          type: string
+          example: 754А
+        address:
+          description: Адрес места
+          type: string
+          example: Домодедово
+        location:
+          description: Координаты места
+          type: string
+          example: 55.414328, 37.900831
+        time:
+          description: >-
+            Время прилета/вылета самолета, прибытия/отправления поезда или
+            подачи автомобиля. Зависит от типа места отправления/назначения
+          type: string
+          format: date-time
+          example: 2022-08-14 18:40
+    additional_location_object:
+      title: Точка дополнительного заезда по маршруту
+      type: object
+      properties:
+        address:
+          description: Целевой адрес
+          type: string
+          example: Москва, Каширское шоссе, 106
+        location:
+          description: Координаты места поездки
+          type: string
+          example: 55.611836, 37.715219
+    text_tablet:
+      title: Текст таблички
+      type: string
+      example: Трасфер для Рахманова Сергея
+    address_object:
+      title: Адрес точки
+      properties:
+        address:
+          title: Адрес
+          type: string
+          example: Россия, Москва, Каширское шоссе, 106
+        point_location:
+          $ref: '#/components/schemas/location'
+    location:
+      title: Координаты точки
+      properties:
+        lat:
+          type: string
+          example: 55.7904465
+        lng:
+          type: string
+          example: 37.6600247
+    comment:
+      title: Комментарий к заказу
+      type: string
+      example: Поездка без музыки
+    currency:
+      title: Валюта ценового предложения
+      description: |
+        Валюта ценового предложения
+        `RUB` - Российский Рубль
+        `EUR` - Евро
+        `USD` - Американский Доллар
+      type: string
+      enum:
+        - RUB
+        - EUR
+        - USD
+      example: RUB
+      default: RUB
+    place_point:
+      title: Координаты точки маршрута
+      type: string
+      example: 55.414057,37.901212
+    car_class_ids:
+      title: Запрашиваемые классы машин
+      type: array
+      items:
+        description: |
+          `0` - эконом
+          `1` - стандарт
+          `2` - бизнес
+          `3` - представительский
+          `4` - минивэн
+          `5` - микроавтобус
+          `6` - автобус
+          `7` - комфорт
+          `8` - внедорожник
+        type: integer
+        enum:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+          - 8
+    price:
+      title: Стоимость поездки
+      type: number
+      example: 1245
+    car_class_object:
+      title: Информация по классу автомобиля
+      type: object
+      properties:
+        car_class_id:
+          $ref: '#/components/schemas/car_class_id'
+        title:
+          $ref: '#/components/schemas/title'
+        models:
+          description: Массив моделей автомобилей
+          type: array
+          items:
+            title: Модель автомобиля
+            type: string
+            example: Skoda Octavia, Kia K5
+        photo:
+          $ref: '#/components/schemas/photo'
+        capacity:
+          $ref: '#/components/schemas/capacity'
+    car_class_id:
+      title: ID класса автомобиля
+      type: integer
+      example: 3
+    car_data_object:
+      title: Информация по классу автомобиля
+      properties:
+        car_class:
+          title: Класс авто
+          type: string
+          example: Комфорт
+    title:
+      title: Название класса
+      type: string
+      example: стандарт
+    photo:
+      title: Фото класса
+      type: string
+      example: 45654112sddf.png
+    capacity:
+      title: Вместимость автомобиля
+      type: integer
+      example: 3
+    place_object:
+      title: Точка маршрута
+      type: object
+      properties:
+        place_id:
+          title: ID места
+          type: integer
+          example: 782
+        title:
+          title: Название места
+          type: string
+          example: Домодедово
+        type:
+          title: Тип места
+          type: integer
+          description: |
+            `1` - В черте города
+            `2` - Аэропорт
+            `3` - Ж/д вокзал
+            `4` - Вблизи города
+            `5` - Населенный пункт
+            `6` - Прочее
+            `7` - В пределах МКАД
+            `8` - В пределах КАД
+            `9` - Центр города
+            `10` - Отель
+          example: 2
+        terminal:
+          title: Терминалы
+          type: array
+          items:
+            type: string
+    place_object2:
+      title: Точка маршрута (модель при получении информации о созданной поездке)
+      type: object
+      properties:
+        place_id:
+          title: ID места
+          type: integer
+          example: 782
+        type:
+          title: Тип места
+          type: integer
+          description: |
+            `1` - В черте города
+            `2` - Аэропорт
+            `3` - Ж/д вокзал
+            `4` - Вблизи города
+            `5` - Населенный пункт
+            `6` - Прочее
+            `7` - В пределах МКАД
+            `8` - В пределах КАД
+            `9` - Центр города
+            `10` - Отель
+          example: 2
+    additional_services_object:
+      title: Список доп. услуг
+      type: object
+      properties:
+        id:
+          title: ID доп. услуги
+          type: number
+          example: 3
+        price:
+          title: Цена в валюте прайса
+          type: number
+          example: RUB
+        name:
+          title: Название доп. услуги
+          type: string
+          example: Табличка
+        type:
+          title: Тип доп. услуги
+          type: string
+          example: table
+    transaction:
+      title: >-
+        Уникальный идентификатор заказа.
+      type: integer
+      example: 23451296
+    pickup_time:
+      title: Дата и время подачи автомобиля
+      type: string
+      example: 2022-08-14 14:00
+    departure_time:
+      title: Время отправления поезда или самолёта
+      type: string
+      example: 2022-08-14 18:00
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      security: []
+      tags:
+        - user
+      summary: Авторизация пользователя в системе бронирования поставщика
+      operationId: authUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user:
+                  $ref: '#/components/schemas/user'
+                password:
+                  $ref: '#/components/schemas/password'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      token:
+                        title: Токен аутентификации
+                        type: string
+                        example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJhZXJvY2x1YiIsImlhdCI6MTY1ODMxNjQzOSwiZXhwIjoxNjU4MzE3NjQ1LCJhdWQiOiJhZXJvY2x1Yi5ydSIsInN1YiI6ImFlcm9jbHViIiwidXNlciI6ImFlcm9jbHViIn0.E4LyYxAlo1vFTi7oH4X02NNJ8qIuj663XGMCsN8O-98
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.
+  /prices:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - price
+      summary: Получение списка предложений
+      operationId: getTransferPriceList
+      parameters:
+        - in: query
+          name: lang
+          required: true
+          schema:
+            $ref: '#/components/schemas/lang'
+        - in: query
+          name: currency
+          required: false
+          schema:
+            $ref: '#/components/schemas/currency'
+        - in: query
+          name: start_place_point
+          required: true
+          schema:
+            $ref: '#/components/schemas/place_point'
+        - in: query
+          name: finish_place_point
+          required: true
+          schema:
+            $ref: '#/components/schemas/place_point'
+        - in: query
+          name: relation_car_class_ids
+          required: true
+          schema:
+            $ref: '#/components/schemas/car_class_ids'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: array
+                    items:
+                      title: Ценовое предложение
+                      type: object
+                      properties:
+                        price_id:
+                          $ref: '#/components/schemas/price_id'
+                        price:
+                          $ref: '#/components/schemas/price'
+                        car_class:
+                          $ref: '#/components/schemas/car_class_object'
+                        allowable_subaddress:
+                          title: Разрешенное количество дополнительных адресов
+                          type: integer
+                          example: 2
+                        price_subaddress:
+                          title: Цена дополнительных поездок
+                          type: number
+                          example: 1450
+                        cancellation_time:
+                          title: >-
+                            Минимально возможное время для бесплатной отмены
+                            поездки.
+                          type: integer
+                          example: 3
+                        allowable_time:
+                          title: Минимально возможное время для бронирования поездки
+                          type: integer
+                          example: 3
+                        start_place:
+                          $ref: '#/components/schemas/place_object'
+                        finish_place:
+                          $ref: '#/components/schemas/place_object'
+                        additional_services:
+                          $ref: '#/components/schemas/additional_services_object'
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '401':
+          description: Auth Error.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.
+  /places/get-place-by-point:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - place
+      summary: Метод получения place_id по координатам
+      operationId: checkLoacation
+      parameters:
+        - in: query
+          name: point
+          required: true
+          schema:
+            $ref: '#/components/schemas/point'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      place_id:
+                        title: Вернёт ID места
+                        type: integer
+                        example: 135
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.
+  /orders:
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - order
+      summary: Создание заказа
+      operationId: createOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lang:
+                  $ref: '#/components/schemas/lang'
+                currency:
+                  $ref: '#/components/schemas/currency'
+                trips:
+                  title: Массив поездок
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/trip_object'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction:
+                      $ref: '#/components/schemas/transaction'
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '401':
+          description: Auth Error.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.
+  /orders/approve/{transaction}:
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - order
+      summary: Подтверждение заказа
+      operationId: approveOrder
+      parameters:
+        - in: path
+          name: transaction
+          required: true
+          schema:
+            $ref: '#/components/schemas/transaction'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      transaction:
+                        $ref: '#/components/schemas/transaction'
+                      order_id:
+                        $ref: '#/components/schemas/order_id'
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '401':
+          description: Auth Error.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.
+  /orders/trips:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - order
+      summary: Получение списка поездок
+      operationId: getOrderList
+      parameters:
+        - in: query
+          name: lang
+          required: true
+          schema:
+            $ref: '#/components/schemas/lang'
+        - in: query
+          name: page
+          schema:
+            type: integer
+            example: 0
+        - in: query
+          name: order_id
+          required: false
+          schema:
+            $ref: '#/components/schemas/order_id'
+        - in: query
+          name: order_status
+          required: false
+          schema:
+            $ref: '#/components/schemas/status'
+        - in: query
+          name: begin_date_reservation
+          required: false
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: end_date_reservation
+          required: false
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: begin_date_arrival
+          required: false
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: end_date_arrival
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/trip_object2'
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '401':
+          description: Auth Error.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.
+  /orders/trips/cancel:
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - order
+      summary: Отмена поездки
+      operationId: cancelOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transaction:
+                  $ref: '#/components/schemas/transaction'
+                order_id:
+                  $ref: '#/components/schemas/order_id'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      order_id:
+                        $ref: '#/components/schemas/order_id'
+                      transaction:
+                        $ref: '#/components/schemas/transaction'
+                      status:
+                        $ref: '#/components/schemas/status'
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '401':
+          description: Auth Error.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.
+  /documents:
+    get:
+      security:
+        - bearerAuth: []
+      tags:
+        - document
+      summary: Получение ссылок на документы по заказу
+      operationId: getOrderDocuments
+      parameters:
+        - in: query
+          name: langs
+          required: true
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/lang'
+        - in: query
+          name: transaction
+          required: true
+          schema:
+            $ref: '#/components/schemas/transaction'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      voucher:
+                        title: Ссылка на общий ваучер
+                        type: object
+                        properties:
+                          ru:
+                            type: string
+                            example: https://link
+                          en:
+                            type: string
+                            example: https://link
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '401':
+          description: Auth Error.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.
+  /orders/check-time:
+    post:
+      security:
+        - bearerAuth: []
+      tags:
+        - order
+      summary: Проверка возможности оформления заказа на указанное время
+      operationId: checkTime
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                price_id:
+                  $ref: '#/components/schemas/price_id'
+                pickup_time:
+                  $ref: '#/components/schemas/pickup_time'
+                departure_time:
+                  description: >-
+                    Время отправления поезда/самолета (нужно передавать только для поездок в пункты соотвествующего типа)
+                  $ref: '#/components/schemas/departure_time'
+              required:
+                - price_id
+                - pickup_time
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: object
+                    properties:
+                      allow_booking:
+                        description: Флаг возможности бронирования
+                        type: boolean
+                        example: true
+                      possible_connecting_time:
+                        description: >-
+                          Время вылета самолета или отправления поезда не
+                          удовлетворяет условиям
+                        type: boolean
+                        example: true
+                      possible_pickup_time:
+                        description: Время подачи автомобиля не удовлетворяет условиям
+                        type: boolean
+                        example: true
+                      min_allowed_time_order:
+                        description: >-
+                          Минимальное возможное время подачи автомобиля в
+                          часовом поясе точки отправления (ближайшее время
+                          подачи)
+                        type: string
+                        example: '2022-08-14T14:20:00+03:00'
+                      min_connecting_time:
+                        description: >-
+                          Минимальное возможное время вылета самолета или
+                          отправления поезда при неизменном времени подачи
+                          автомобиля
+                        type: string
+                        example: '2022-08-14T15:25:00+03:00'
+                  error:
+                    type: object
+                    example: null
+        '400':
+          description: Bad Request.
+        '404':
+          description: Page Not Found.
+        5XX:
+          description: Internal Server Error.

@@ -1,0 +1,26 @@
+<!doctype html> <!-- Important: must specify -->
+<html>
+  <head>
+    <meta charset="utf-8"> <!-- Important: rapi-doc uses utf8 characters -->
+    <script type="module" src="/dist/rapidoc-min.js"></script>
+  </head>
+  <body>
+    <rapi-doc
+      spec-url = "openapi.yaml"
+	  allow-spec-url-load="false"
+	  allow-spec-file-load="false"
+	  allow-server-selection="false"
+	  allow-authentication="false"
+	  render-style="read"
+      nav-item-spacing="compact"
+      use-path-in-nav-bar="true"
+      schema-style="tree"
+      info-description-headings-in-navbar="true"
+      show-components="false"
+      schema-description-expanded="true"
+      schema-expand-level="1"
+      show-header="false"
+      allow-advanced-search="true"
+    > </rapi-doc>
+  </body>
+</html>
