@@ -14,7 +14,7 @@ info:
     - Водит данные по времени подачи машины, если конечная точка маршрута аэропорт или вокзал, то вводятся данные по времени вылета/отправления поезда.
      - Для валидации возможности подачи машины к определенному времени отправляется запрос [POST /orders/check-time](#post-/orders/check-time "POST /orders/check-time"). Если валидация пройдена, то разрешаем клиенту продолжить работать с услугой на платформе Aeroclub.
     - Клиент выбирает точку на маршруте для доп. заезда.
-     - При добавлении точки доп. заезда в систему поставщика отправляется запрос [GET /places/get-place-by-point](#get-/places/get-place-by-point "GET /places/get-place-by-point") в следствии чего в ответе мы должны получить place_id, который сравниваем с place_id начальной или конечной точкой машрута. Если id совпадают, то разрешаем добавить точку доп. заезда по машруту в услугу.
+     - При добавлении точки доп. заезда в систему поставщика отправляется запрос [GET /areas/get-area-by-point](#get-/areas/get-area-by-point "GET /areas/get-area-by-point") в следствии чего в ответе мы должны получить area_id, который сравниваем с area_id начальной или конечной точкой машрута. Если id совпадают, то разрешаем добавить точку доп. заезда по машруту в услугу.
     
     ## Создание заказа на стороне поставщика
     - Оправляем запрос на создание заказа в API поставщика [POST /orders](#post-/orders "POST /orders").
@@ -36,8 +36,8 @@ info:
 tags:
   - name: user
     description: Users
-  - name: place
-    description: Places
+  - name: area
+    description: Areas
   - name: price
     description: Prices
   - name: order
@@ -432,7 +432,7 @@ components:
       title: Точка маршрута
       type: object
       properties:
-        place_id:
+        area_id:
           title: ID места
           type: integer
           example: 782
@@ -464,7 +464,7 @@ components:
       title: Точка маршрута (модель при получении информации о созданной поездке)
       type: object
       properties:
-        place_id:
+        area_id:
           title: ID места
           type: integer
           example: 782
@@ -654,13 +654,13 @@ paths:
           description: Page Not Found.
         5XX:
           description: Internal Server Error.
-  /places/get-place-by-point:
+  /areas/get-area-by-point:
     get:
       security:
         - bearerAuth: []
       tags:
-        - place
-      summary: Метод получения place_id по координатам
+        - area
+      summary: Метод получения area_id по координатам
       operationId: checkLoacation
       parameters:
         - in: query
@@ -679,7 +679,7 @@ paths:
                   result:
                     type: object
                     properties:
-                      place_id:
+                      area_id:
                         title: Вернёт ID места
                         type: integer
                         example: 135
