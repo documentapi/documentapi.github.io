@@ -494,7 +494,7 @@ components:
         price:
           title: Цена в валюте прайса
           type: number
-          example: RUB
+          example: 156
         name:
           title: Название доп. услуги
           type: string
@@ -795,6 +795,11 @@ paths:
           schema:
             type: integer
             example: 0
+        - in: query
+          name: transaction_id
+          required: false
+          schema:
+            $ref: '#/components/schemas/transaction'
         - in: query
           name: order_id
           required: false
